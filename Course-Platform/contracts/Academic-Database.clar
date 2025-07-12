@@ -30,6 +30,7 @@
 (define-constant ERR-STUDENT-NOT-ENROLLED (err u106))
 (define-constant ERR-EVALUATIONS-DISABLED (err u107))
 (define-constant ERR-INVALID-INPUT-FORMAT (err u108))
+(define-constant ERR-INVALID-COURSE-ID (err u109))
 
 ;; CORE DATA STRUCTURES
 
@@ -117,6 +118,14 @@
   (and 
     (>= rating-value min-allowed-rating)
     (<= rating-value max-allowed-rating)
+  )
+)
+
+;; Validate course ID is within valid range
+(define-read-only (is-valid-course-id (course-id uint))
+  (and 
+    (> course-id u0)
+    (<= course-id (var-get next-course-id))
   )
 )
 
@@ -217,43 +226,55 @@
 
 ;; Update instructor assignment for an existing course
 (define-public (update-course-instructor (course-id uint) (new-instructor principal))
-  (match (get-course-details course-id)
-    course-info
-      (begin
-        ;; Only platform administrators can reassign instructors
-        (asserts! (is-platform-admin) ERR-UNAUTHORIZED-ACCESS)
-        
-        ;; Update instructor assignment
-        (map-set course-registry
-          { course-id: course-id }
-          (merge course-info
-                 { instructor-address: new-instructor })
+  (begin
+    ;; Only platform administrators can reassign instructors
+    (asserts! (is-platform-admin) ERR-UNAUTHORIZED-ACCESS)
+    
+    ;; Validate course ID is in valid range
+    (asserts! (is-valid-course-id course-id) ERR-INVALID-COURSE-ID)
+    
+    ;; Verify course exists and get course info
+    (match (get-course-details course-id)
+      course-info
+        (begin
+          ;; Update instructor assignment
+          (map-set course-registry
+            { course-id: course-id }
+            (merge course-info
+                   { instructor-address: new-instructor })
+          )
+          
+          (ok true)
         )
-        
-        (ok true)
-      )
-    ERR-COURSE-NOT-FOUND
+      ERR-COURSE-NOT-FOUND
+    )
   )
 )
 
 ;; Toggle evaluation acceptance status for a course
 (define-public (toggle-evaluation-status (course-id uint) (enabled-status bool))
-  (match (get-course-details course-id)
-    course-info
-      (begin
-        ;; Verify caller has course management permissions
-        (asserts! (can-manage-course course-id) ERR-INSUFFICIENT-PERMISSIONS)
-        
-        ;; Update evaluation acceptance status
-        (map-set course-registry
-          { course-id: course-id }
-          (merge course-info 
-                 { evaluation-enabled: enabled-status })
+  (begin
+    ;; Validate course ID is in valid range
+    (asserts! (is-valid-course-id course-id) ERR-INVALID-COURSE-ID)
+    
+    ;; Verify course exists and get course info
+    (match (get-course-details course-id)
+      course-info
+        (begin
+          ;; Verify caller has course management permissions
+          (asserts! (can-manage-course course-id) ERR-INSUFFICIENT-PERMISSIONS)
+          
+          ;; Update evaluation acceptance status
+          (map-set course-registry
+            { course-id: course-id }
+            (merge course-info 
+                   { evaluation-enabled: enabled-status })
+          )
+          
+          (ok true)
         )
-        
-        (ok true)
-      )
-    ERR-COURSE-NOT-FOUND
+      ERR-COURSE-NOT-FOUND
+    )
   )
 )
 
@@ -266,6 +287,9 @@
                           tx-sender 
                           target-student))
   )
+    ;; Validate course ID is in valid range
+    (asserts! (is-valid-course-id course-id) ERR-INVALID-COURSE-ID)
+    
     ;; Verify course exists
     (asserts! (is-some (get-course-details course-id)) ERR-COURSE-NOT-FOUND)
     
@@ -290,6 +314,9 @@
                             tx-sender 
                             target-student))
   )
+    ;; Validate course ID is in valid range
+    (asserts! (is-valid-course-id course-id) ERR-INVALID-COURSE-ID)
+    
     ;; Verify course exists
     (asserts! (is-some (get-course-details course-id)) ERR-COURSE-NOT-FOUND)
     
@@ -319,6 +346,9 @@
     (existing-evaluation (get-student-evaluation course-id tx-sender))
     (current-stats (map-get? course-statistics { course-id: course-id }))
   )
+    ;; Validate course ID is in valid range
+    (asserts! (is-valid-course-id course-id) ERR-INVALID-COURSE-ID)
+    
     ;; Verify course exists in registry
     (asserts! (is-some course-info) ERR-COURSE-NOT-FOUND)
     
@@ -382,6 +412,9 @@
     (course-info (get-course-details course-id))
     (stats-info (map-get? course-statistics { course-id: course-id }))
   )
+    ;; Validate course ID is in valid range
+    (asserts! (is-valid-course-id course-id) ERR-INVALID-COURSE-ID)
+    
     (match course-info
       course-data
         (match stats-info
